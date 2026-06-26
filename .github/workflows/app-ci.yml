@@ -1,0 +1,97 @@
+# app-ci.yml — the reusable CI workflow for every customer app repo (D-caf-2).
+#
+# Canonical source: fabric-apps/ci/app-ci.yml in the monorepo. DEPLOY: this file
+# lives in the fleet-ci repo at .github/workflows/app-ci.yml and is referenced
+# (not copied) by every app's thin caller (see caller-ci.yml). A pipeline fix is
+# one edit here + a new fleet-ci tag, not N PRs across the fleet.
+#
+# Runner split (security): runs on ubuntu-latest, NEVER on the self-hosted
+# fabric runners. App repos take contractor pushes; the self-hosted boxes run
+# sudo + boot VMs on the internal network and must stay unreachable from
+# contractor-writable repos. App CI is plain Node build + lint — it does not
+# want those boxes.
+#
+# Tamper-resistance: the lint scripts are checked out from fleet-ci (which
+# contractors cannot edit), NOT from the app repo. A contractor weakening a
+# vendored lint copy in their own repo cannot affect the check that actually
+# runs, because the check runs fleet-ci's copy against the app's code.
+name: app-ci
+
+on:
+  workflow_call:
+    inputs:
+      ci_ref:
+        description: >-
+          The fleet-ci ref to source the lint scripts from. Pin to the same
+          version the caller pins this workflow to, so lints and workflow move
+          together. Defaults to the v1 line.
+        type: string
+        default: v1
+
+permissions:
+  contents: read
+  packages: read   # install @nexgenomics/core from GitHub Packages (L15: GITHUB_TOKEN)
+
+jobs:
+  app-ci:
+    name: app-ci
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout app
+        uses: actions/checkout@v4
+
+      - name: Checkout fleet-ci lints (tamper-resistant; not from the app repo)
+        uses: actions/checkout@v4
+        with:
+          repository: nexgenomics/fleet-ci
+          ref: ${{ inputs.ci_ref }}
+          path: .fleet-ci
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install (clean, from committed lock)
+        # The app's committed .npmrc carries the @nexgenomics scope line and the
+        # env-form _authToken; npm expands ${NODE_AUTH_TOKEN} at install. The
+        # generator commits package-lock.json so `npm ci` is reproducible.
+        run: npm ci
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # --- source-shape gates (no build needed) -------------------------------
+      - name: core-pin (D-cac-1)
+        run: node .fleet-ci/lints/core-pin.mjs .
+
+      - name: no-deep-imports (L13)
+        run: node .fleet-ci/lints/no-deep-imports.mjs .
+
+      - name: check-npmrc-token (L15)
+        run: node .fleet-ci/lints/check-npmrc-token.mjs .
+
+      - name: auth-posture (D-cac-1)
+        run: node .fleet-ci/lints/auth-posture.mjs .
+
+      - name: no-raw-gateway (D-cac-1)
+        run: node .fleet-ci/lints/no-raw-gateway.mjs .
+
+      - name: frontend-only (D-cac-4)
+        run: node .fleet-ci/lints/frontend-only.mjs .
+
+      # --- build gates --------------------------------------------------------
+      - name: typecheck
+        run: npm run typecheck
+
+      - name: build (clean-clone)
+        run: npm run build
+
+      # --- post-build gates ---------------------------------------------------
+      - name: check-no-secrets (dist)
+        run: npm run check:secrets
+
+      - name: styling-assert (core classes reached built CSS)
+        run: node .fleet-ci/lints/styling-assert.mjs .
