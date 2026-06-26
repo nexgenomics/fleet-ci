@@ -18,7 +18,14 @@ const APP = resolve(process.argv[2] || '.')
 // Illegal: //npm.pkg.github.com/:_authToken=ghp_realtokenvalue...
 const LITERAL_TOKEN = /_authToken\s*=\s*(?!\$\{)(\S+)/
 
-const SKIP_DIRS = new Set(['node_modules', 'dist', '.git', '.staging'])
+// SKIP .fleet-ci: under the reusable CI workflow the app's CI checks out
+// fleet-ci into ./.fleet-ci and runs `node .fleet-ci/lints/check-npmrc-token.mjs .`,
+// so the scanned root contains this lint's OWN source — whose comments carry
+// literal `_authToken=ghp_…` examples. Without this skip the lint self-flags
+// (F-rag-8, found on the first live app-hello PR). .fleet-ci is the trusted,
+// contractor-unwritable checkout, never app source, so excluding it loses no
+// coverage. (frontend-only already skips it for the same reason.)
+const SKIP_DIRS = new Set(['node_modules', 'dist', '.git', '.staging', '.fleet-ci'])
 function walk(dir) {
   const out = []
   for (const e of readdirSync(dir)) {
