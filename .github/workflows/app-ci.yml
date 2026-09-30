@@ -78,6 +78,8 @@ jobs:
 
       - name: no-raw-gateway (D-cac-1)
         run: node .fleet-ci/lints/no-raw-gateway.mjs .
+      - name: no-raw-failure-text (campaign-onboarding chunk 1)
+        run: node .fleet-ci/lints/no-raw-failure-text.mjs .
 
       - name: frontend-only (D-cac-4)
         run: node .fleet-ci/lints/frontend-only.mjs .
