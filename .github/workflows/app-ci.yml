@@ -75,6 +75,8 @@ jobs:
 
       - name: auth-posture (D-cac-1)
         run: node .fleet-ci/lints/auth-posture.mjs .
+      - name: silent-gate (item 1705)
+        run: node .fleet-ci/lints/silent-gate.mjs .
 
       - name: no-raw-gateway (D-cac-1)
         run: node .fleet-ci/lints/no-raw-gateway.mjs .
